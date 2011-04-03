@@ -1,0 +1,12 @@
+WSDL2Android
+
+WSDL2Android is a project which takes a WSDL file (or files) and generates 
+client side code to connect to the service behind the WSDL file from an Android
+client.  The big goal of this project is to make that connection as easy as 
+possible from the client class:
+* No dependencies on the Android project.
+* No explicit XML parsing needed in the Android project.
+* WSDL Types and Services available as full Java classes.
+
+Maven and Ant plugins will be available to trigger the code generation as part
+of a standard build process.
