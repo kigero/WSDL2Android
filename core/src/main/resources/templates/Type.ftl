@@ -12,6 +12,12 @@ public class ${typeName} extends SOAPObject
     </#list>
     </#if>
 
+    <#if elements??>
+    <#list elements as element>
+    public ${element.javaType} ${element.name} = null;
+    </#list>
+    </#if>
+
     public String getNamespace()
     {
         return "<#if namespace??>${namespace}</#if>";
@@ -23,7 +29,7 @@ public class ${typeName} extends SOAPObject
         <#list atts as att>
         if(${att.name} != null)
         {
-            xml.attribute(null, "${att.name}", ${att.name});
+            xml.attribute(null, "${att.name}", ${att.name}.toString());
         }
         </#list>
         </#if>
@@ -31,6 +37,13 @@ public class ${typeName} extends SOAPObject
 
     public void addElementsToNode(XmlSerializer xml) throws IOException
     {
-
+        <#if elements??>
+        <#list elements as element>
+        if(${element.name} != null)
+        {
+            xml.attribute(null, "${element.name}", ${element.name}.toString());
+        }
+        </#list>
+        </#if>
     }
 }

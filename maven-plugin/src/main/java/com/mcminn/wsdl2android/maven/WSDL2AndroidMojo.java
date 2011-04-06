@@ -8,6 +8,7 @@ import com.mcminn.wsdl2android.WSDL2Android;
 import java.util.List;
 import java.util.ArrayList;
 import java.io.File;
+import java.util.Map;
 
 /**
  * @goal generate
@@ -33,6 +34,11 @@ public class WSDL2AndroidMojo extends AbstractMojo
      * @parameter
      */
     private String outputTypesPackage;
+
+    /**
+     * @parameter
+     */
+    private Map<String, String> namespaceMap;
     
     public void execute() throws MojoExecutionException
     {
@@ -51,6 +57,14 @@ public class WSDL2AndroidMojo extends AbstractMojo
         if(outputTypesPackage != null)
         {
             wsdl2android.setOutputTypesPackage(outputTypesPackage);
+        }
+
+        if(namespaceMap != null)
+        {
+            for(String prefix : namespaceMap.keySet())
+            {
+                wsdl2android.addNamespace(prefix, namespaceMap.get(prefix));
+            }
         }
 
         if(wsdlsets != null && wsdlsets.length > 0)

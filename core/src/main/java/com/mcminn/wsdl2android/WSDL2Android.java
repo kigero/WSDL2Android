@@ -26,6 +26,8 @@ import java.util.Vector;
 public class WSDL2Android
 {
     private static Logger log;
+    private static Map<String, String> wsdlTypeToJavaType = new HashMap<String, String>();
+    private static final String XSD_NAMESPACE = "http://www.w3.org/2001/XMLSchema";
 
     private List<File> wsdls = new ArrayList<File>();
     private String outputPackage = "wsdl2android";
@@ -33,6 +35,44 @@ public class WSDL2Android
     private File outputDir = new File(".");
 
     private Configuration ftlConfig;
+    private Map<String, String> namespaceMap = new HashMap<String, String>();
+
+    static
+    {
+        wsdlTypeToJavaType.put("boolean", "Boolean");
+        wsdlTypeToJavaType.put("byte", "Byte");
+        wsdlTypeToJavaType.put("int", "Integer");
+        wsdlTypeToJavaType.put("integer", "Integer");
+        wsdlTypeToJavaType.put("nonNegativeInteger", "Integer");
+        wsdlTypeToJavaType.put("positiveInteger", "Integer");
+        wsdlTypeToJavaType.put("unsignedByte", "Byte");
+        wsdlTypeToJavaType.put("unsignedInt", "Integer");
+        wsdlTypeToJavaType.put("unsignedLong", "Long");
+        wsdlTypeToJavaType.put("unsignedShort", "Short");
+        wsdlTypeToJavaType.put("double", "Double");
+        wsdlTypeToJavaType.put("long", "Long");
+        wsdlTypeToJavaType.put("short", "Short");
+        wsdlTypeToJavaType.put("float", "Float");
+        wsdlTypeToJavaType.put("dateTime", "java.util.Calendar");
+        wsdlTypeToJavaType.put("date", "java.util.Calendar");
+        wsdlTypeToJavaType.put("time", "java.util.Calendar");
+        wsdlTypeToJavaType.put("duration", "Integer");
+        wsdlTypeToJavaType.put("base64Binary", "Byte[]");
+        wsdlTypeToJavaType.put("decimal", "java.math.BigDecimal");
+        wsdlTypeToJavaType.put("QName", "javax.xml.namespace.QName");
+        wsdlTypeToJavaType.put("anyURI", "java.net.URI");
+        wsdlTypeToJavaType.put("string", "String");
+        wsdlTypeToJavaType.put("normalizedString", "String");
+        wsdlTypeToJavaType.put("token", "String");
+        wsdlTypeToJavaType.put("language", "String");
+        wsdlTypeToJavaType.put("Name", "String");
+        wsdlTypeToJavaType.put("NCName", "String");
+        wsdlTypeToJavaType.put("anyType", "String");
+        wsdlTypeToJavaType.put("ID", "String");
+        wsdlTypeToJavaType.put("ENTITY", "String");
+        wsdlTypeToJavaType.put("IDREF", "String");
+        wsdlTypeToJavaType.put("hexBinary", "Byte[]");
+    }
 
     public WSDL2Android()
     {
@@ -233,7 +273,7 @@ public class WSDL2Android
             if(type != null)
             {
                 String typeName = buildTypeName(
-                        def.getPrefix(type.getNamespaceURI()), type.getLocalPart());
+                        getPrefix(type.getNamespaceURI()), type.getLocalPart());
                 String partName = part.getName();
 
                 inputSB.append(typeName);
@@ -270,12 +310,11 @@ public class WSDL2Android
         rtrn.put("bindingName", binding.getQName().getLocalPart());
 
         List<Map<String, Object>> bOpNamespaces = new ArrayList<Map<String, Object>>();
-        Map<String, String> namespaces = def.getNamespaces();
-        for(String prefix : namespaces.keySet())
+        for(String prefix : namespaceMap.keySet())
         {
             Map<String, Object> bOpNamespace = new HashMap<String, Object>();
             bOpNamespace.put("prefix", prefix);
-            bOpNamespace.put("uri", namespaces.get(prefix));
+            bOpNamespace.put("uri", namespaceMap.get(prefix));
             bOpNamespaces.add(bOpNamespace);
         }
         rtrn.put("namespaces", bOpNamespaces);
@@ -318,67 +357,136 @@ public class WSDL2Android
         }
     }
 
-    private Map<String, Object> getTypeModel(XmlSchemaElement element, 
-            String prefix)
+    private String getTypeFromQName(QName qName)
     {
-        Map<String, Object> rtrn = new HashMap<String, Object>();
+        String typeName = null;
 
-        rtrn.put("package", outputTypesPackage);
-        if(!outputPackage.equals(outputTypesPackage))
+        if(qName != null)
         {
-            rtrn.put("importBindings", outputPackage);
-        }
-
-        rtrn.put("typeName", 
-                buildTypeName(prefix, element.getQName().getLocalPart()));
-
-        rtrn.put("namespace", element.getQName().getNamespaceURI());
-
-        List<Map<String, Object>> atts = new ArrayList<Map<String, Object>>();
-
-        XmlSchemaType type = element.getSchemaType();
-        if(type instanceof XmlSchemaComplexType)
-        {
-            XmlSchemaComplexType complexType = (XmlSchemaComplexType) type;
-            XmlSchemaObjectCollection col = complexType.getAttributes();
-            for(int x = 0;x < col.getCount();x++)
+            //If the namespace is xsd, assume it's a base type.
+            if(XSD_NAMESPACE.equals(qName.getNamespaceURI()))
             {
-                XmlSchemaObject obj = col.getItem(x);
-                if(obj instanceof XmlSchemaAttribute)
+                typeName = qName.getLocalPart();
+                if(typeName != null)
                 {
-                    XmlSchemaAttribute att = (XmlSchemaAttribute) obj;
-                    
-                    Map<String, Object> attModel = new HashMap<String, Object>();
-                    attModel.put("name", att.getName());
-                    attModel.put("javaType", "String");
-                    atts.add(attModel);
+                    typeName = wsdlTypeToJavaType.get(typeName);
                 }
             }
-
-            //Sequence
-            /*
-            XmlSchemaSequence seq = (XmlSchemaSequence) ct.getParticle();
-            XmlSchemaObjectCollection col = seq.getItems();
-            for(int x = 0;x < col.getCount();x++)
+            else
             {
-                XmlSchemaObject obj = col.getItem(x);
+                typeName = buildTypeName(getPrefix(qName.getNamespaceURI()), qName.getLocalPart());
+            }                    
+        }
 
-                System.out.println(x + ": [" + obj.getClass().getSimpleName() 
-                        + "] " + obj.toString("", 0)); 
-            }
-            */
+        if(typeName == null || typeName.equals(""))
+        {
+            typeName = "/* Couldn't find real type */ String";
+        }
+
+        return typeName;
+    }
+
+    private Map<String, Object> getModelForAttribute(XmlSchemaAttribute att)
+    {
+        Map<String, Object> attModel = new HashMap<String, Object>();
+        attModel.put("name", att.getName());
+        /*
+        System.out.println("--" + att.getName() + "--");
+        System.out.println("type: " + att.getAttributeType());
+        System.out.println("qname: " + att.getQName());
+        System.out.println("schema type: " + att.getSchemaType());
+        System.out.println("schema type name: " + att.getSchemaTypeName());
+        System.out.println("----------");
+        */
+
+        //It looks like the schema type name gives you the right java type.
+        attModel.put("javaType", getTypeFromQName(att.getSchemaTypeName()));
+        return attModel;
+    }
+
+    private Map<String, Object> getModelForSequenceElement(XmlSchemaElement el)
+    {
+        Map<String, Object> elModel = new HashMap<String, Object>();
+        elModel.put("name", el.getName());
+        /*
+        System.out.println("--" + el.getName() + "--");
+        System.out.println("qname: " + el.getQName());
+        System.out.println("schema type: " + el.getSchemaType());
+        System.out.println("schema type name: " + el.getSchemaTypeName());
+        System.out.println("----------");
+        */
+
+        //It looks like the schema type name gives you the right type.
+        elModel.put("javaType", getTypeFromQName(el.getSchemaTypeName()));
+
+        return elModel;
+    }
+
+    private void getPropertiesFromComplexType(XmlSchemaComplexType type, Map<String, Object> masterModel)
+    {
+       System.out.println("Complex type: " + type.toString());
+
+       //Get the attributes on the type.
+       XmlSchemaObjectCollection col = type.getAttributes();
+       if(col != null)
+       {
+           List<Map<String, Object>> atts = new ArrayList<Map<String, Object>>();
+
+           for(int x = 0;x < col.getCount();x++)
+           {
+               XmlSchemaObject obj = col.getItem(x);
+               if(obj instanceof XmlSchemaAttribute)
+               {
+                   atts.add(getModelForAttribute((XmlSchemaAttribute) obj));
+               }
+           }
+
+           masterModel.put("atts", atts);
+       }
+
+       //Get the sequence elements.
+       XmlSchemaSequence seq = (XmlSchemaSequence) type.getParticle();
+       if(seq != null)
+       {
+           col = seq.getItems();
+           List<Map<String, Object>> sequenceModels = new ArrayList<Map<String, Object>>();
+
+           for(int x = 0;x < col.getCount();x++)
+           {
+               XmlSchemaObject obj = col.getItem(x);
+               if(!(obj instanceof XmlSchemaElement))
+               {
+                   continue;
+               }
+
+               XmlSchemaElement seqEl = (XmlSchemaElement) obj;
+               sequenceModels.add(getModelForSequenceElement(seqEl));
+           }
+
+           masterModel.put("elements", sequenceModels);
+       }
+    }
+
+    private void getPropertiesFromSimpleType(XmlSchemaSimpleType type, Map<String, Object> masterModel)
+    {
+        List<Map<String, Object>> rtrn = new ArrayList<Map<String, Object>>();
+
+        System.out.println("Simple type: " + type.toString());
+    }
+
+    private void addPropertiesFromType(XmlSchemaType type, Map<String, Object> masterModel)
+    {
+        if(type instanceof XmlSchemaComplexType)
+        {
+            getPropertiesFromComplexType((XmlSchemaComplexType) type, masterModel);
         }
         else if(type instanceof XmlSchemaSimpleType)
         {
-
+            getPropertiesFromSimpleType((XmlSchemaSimpleType) type, masterModel);
         }
-
-        rtrn.put("atts", atts);
-        return rtrn;
     }
 
-    private Map<String, Object> getTypeModel(XmlSchemaType type,
-            String prefix)
+    private Map<String, Object> getTypeModel(Definition def, XmlSchemaType type, String prefix)
     {
         Map<String, Object> rtrn = new HashMap<String, Object>();
 
@@ -388,18 +496,62 @@ public class WSDL2Android
             rtrn.put("importBindings", outputPackage);
         }
 
-        rtrn.put("typeName", 
-                buildTypeName(prefix, type.getQName().getLocalPart()));
+        String typeName = buildTypeName(prefix, type.getName());
+        rtrn.put("typeName", typeName);
+        System.out.println("Processing type: " + typeName);
 
-        rtrn.put("namespace", type.getQName().getNamespaceURI());
+        if(type.getQName() == null)
+        {
+            rtrn.put("namespace", "");
+        }
+        else
+        {
+            rtrn.put("namespace", type.getQName().getNamespaceURI());
+        }
 
+        //Find the properties on the master type.
+        addPropertiesFromType(type, rtrn);
 
         return rtrn;
     }
 
-    private Map<String, Map<String, Object>> getTypes(String baseURI, Element el, 
+    private Map<String, Object> getTypeModel(Definition def, XmlSchemaElement element, String prefix)
+    {
+        Map<String, Object> rtrn = new HashMap<String, Object>();
+
+        rtrn.put("package", outputTypesPackage);
+        if(!outputPackage.equals(outputTypesPackage))
+        {
+            rtrn.put("importBindings", outputPackage);
+        }
+
+        if(element.getName() == null)
+        {
+            System.out.println(element.getSourceURI() + ": " + element.getLineNumber() + " ::: " + element.toString());
+        }
+        String typeName = buildTypeName(prefix, element.getName());
+        rtrn.put("typeName", typeName);
+        System.out.println("Processing element: " + typeName);
+
+        if(element.getQName() == null)
+        {
+            rtrn.put("namespace", "");
+        }
+        else
+        {
+            rtrn.put("namespace", element.getQName().getNamespaceURI());
+        }
+
+        //Find the properties on the master type.
+        addPropertiesFromType(element.getSchemaType(), rtrn);
+
+        return rtrn;
+    }
+
+    private Map<String, Map<String, Object>> getTypes(Definition def, Element el, 
             String prefix) 
     {
+        String baseURI = def.getDocumentBaseURI();
         Map<String, Map<String, Object>> rtrn = 
             new HashMap<String, Map<String, Object>>();
 
@@ -415,7 +567,7 @@ public class WSDL2Android
             while(tableValuesI.hasNext())
             {
                 Map<String, Object> typeModel =
-                    getTypeModel((XmlSchemaElement) tableValuesI.next(), prefix);
+                    getTypeModel(def, (XmlSchemaElement) tableValuesI.next(), prefix);
                 rtrn.put((String) typeModel.get("typeName"), typeModel);
             }
 
@@ -424,13 +576,14 @@ public class WSDL2Android
             while(tableValuesI.hasNext())
             {
                 Map<String, Object> typeModel =
-                    getTypeModel((XmlSchemaType) tableValuesI.next(), prefix);
+                    getTypeModel(def, (XmlSchemaType) tableValuesI.next(), prefix);
                 rtrn.put((String) typeModel.get("typeName"), typeModel);
             }
         }
         catch(Exception e)
         {
             log.warning("Caught exception parsing schema: " + e.getMessage());
+            log.throwing("WSDL2Android", "getTypes", e);
         }
 
         return rtrn;
@@ -451,7 +604,7 @@ public class WSDL2Android
             {
                 Schema schemaEl = (Schema) el;
 
-                types.putAll(getTypes(def.getDocumentBaseURI(), 
+                types.putAll(getTypes(def, 
                             schemaEl.getElement(), "")); 
 
                 Map<String, Vector<SchemaImport>> imports = schemaEl.getImports();
@@ -461,16 +614,16 @@ public class WSDL2Android
                     Vector<SchemaImport> vecImports = imports.get(key);
                     for(SchemaImport schemaImport : vecImports)
                     {
-                        types.putAll(getTypes(def.getDocumentBaseURI(), 
+                        types.putAll(getTypes(def, 
                                     schemaImport.getReferencedSchema().getElement(), 
-                                    def.getPrefix(schemaImport.getNamespaceURI())));
+                                    getPrefix(schemaImport.getNamespaceURI())));
                     }
                 }
 
                 List<SchemaReference> includes = schemaEl.getIncludes();
                 for(SchemaReference schemaReference : includes)
                 {
-                    types.putAll(getTypes(def.getDocumentBaseURI(), 
+                    types.putAll(getTypes(def, 
                                 schemaReference.getReferencedSchema().getElement(), 
                                 schemaReference.getId())); 
                 }
@@ -478,7 +631,7 @@ public class WSDL2Android
                 List<SchemaReference> redefines = schemaEl.getRedefines();
                 for(SchemaReference schemaReference : redefines)
                 {
-                    types.putAll(getTypes(def.getDocumentBaseURI(), 
+                    types.putAll(getTypes(def, 
                                 schemaReference.getReferencedSchema().getElement(), 
                                 schemaReference.getId())); 
                 }
@@ -500,6 +653,29 @@ public class WSDL2Android
         }
     }
 
+    public void addNamespace(String namespace)
+    {
+        if(!namespaceMap.containsKey(namespace))
+        {
+            int count = 0;
+            while(namespaceMap.containsValue("ns" + count))
+            {
+                count++;
+            }
+            namespaceMap.put(namespace, "ns" + count);
+        }
+    }
+
+    public void addNamespace(String prefix, String namespace)
+    {
+        namespaceMap.put(namespace, prefix);
+    }
+
+    private String getPrefix(String namespace)
+    {
+        return namespaceMap.get(namespace);
+    }
+
     private void generate(File wsdlFile, File outputToDir, File outputTypesToDir)
     {
         log.config("Generating code for: " + wsdlFile.getAbsolutePath());
@@ -512,6 +688,11 @@ public class WSDL2Android
             reader.setFeature("javax.wsdl.importDocuments", true);
 
             Definition def = reader.readWSDL(null, wsdlFile.getAbsolutePath());
+
+            for(Object o : def.getNamespaces().values())
+            {
+                addNamespace((String) o);
+            }
 
             writeBindings(def, outputToDir);
             writeTypes(def, outputTypesToDir);            
