@@ -23,7 +23,7 @@ public class ${bindingName} extends SOAPBinding
     }
 
     <#list bOps as bOp>
-    public void ${bOp.name}(${bOp.paramString}) throws IOException
+    public ${bOp.return} ${bOp.name}(${bOp.paramString}) throws IOException
     {
         Map<String, SOAPObject> bodyElements = new HashMap<String, SOAPObject>();
         <#list bOp.params as param>
@@ -33,7 +33,22 @@ public class ${bindingName} extends SOAPBinding
         }
         </#list>
 
-        makeRequest(bodyElements);  
+        <#if bOp.return = "void">
+        makeRequest(bodyElements);
+        <#else>
+        SOAPEnvelope env = makeRequest(bodyElements);  
+        ${bOp.return} rtrn = null;
+        for(Object o : env.bodyElements)
+        {
+            if(o != null && o instanceof ${bOp.return})
+            {
+                rtrn = (${bOp.return}) o;
+                break;
+            }
+        }
+
+        return rtrn;
+        </#if>
     }
 
     </#list>

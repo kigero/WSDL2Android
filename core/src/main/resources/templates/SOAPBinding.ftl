@@ -18,13 +18,31 @@ import org.apache.http.message.BasicHeader;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.io.IOException;
-import org.xml.sax.helpers.DefaultHandler;
-import org.xml.sax.Attributes;
-import org.xml.sax.SAXException;
-import android.util.Xml;
+import java.util.List;
+import java.util.ArrayList;
+import javax.xml.XMLConstants;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.transform.Source;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerException;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.OutputKeys;
+import org.w3c.dom.Document;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+import org.w3c.dom.Element;
+import org.w3c.dom.TypeInfo;
+import java.io.ByteArrayInputStream;
+import java.io.StringWriter;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
 
 public abstract class SOAPBinding
 {
+    private static final String TYPES_PACKAGE = "${typePackage}";
+
     private String endpoint = "";
     private Map<String, String> namespaces;
     private String logTag = "wsdl2android";
@@ -46,6 +64,16 @@ public abstract class SOAPBinding
         this.logTag = logTag;
     }
 
+    public String getLogTag()
+    {
+        return logTag;
+    }
+
+    public boolean isLogEnabled()
+    {
+        return logTag != null;
+    }
+
     public void setDefaults(SOAPBindingDefaults defaults)
     {
         if(defaults != null)
@@ -54,36 +82,34 @@ public abstract class SOAPBinding
         }
     }
 
-    public void makeRequest(Map<String, SOAPObject> bodyElements)
+    public SOAPEnvelope makeRequest(Map<String, SOAPObject> bodyElements)
         throws IOException
     {
         String envelope = buildEnvelope(bodyElements);
-        if(logTag != null)
+        if(isLogEnabled())
         {
             Log.d(logTag, "Request: \n" + envelope);
         }
 
         String response = sendXmlToServer(envelope, "login");
-        ResponseParser respParser = new ResponseParser();
-        
-        if(logTag != null)
+
+        ResponseParser respParser = new ResponseParser(response);
+        if(isLogEnabled())
         {
-            respParser.setPrettify(true);
+            Log.d(logTag, "Response: \n" + respParser.getXmlAsPrettyString());
         }
 
-        try
+        SOAPEnvelope respObj = respParser.parse();
+        if(isLogEnabled())
         {
-            Xml.parse(response, respParser);
-
-            if(logTag != null)
+            Log.d(logTag, respObj.bodyElements.size() + " body elements.");
+            for(Object o : respObj.bodyElements)
             {
-                Log.d(logTag, "Response: \n" + respParser.getPrettyString());
+                Log.d(logTag, "Parsed root object: " + (o == null ? "null" : o.getClass()));
             }
         }
-        catch(SAXException saxe)
-        {
-            throw new IOException("Could not parse response.", saxe);
-        }
+
+        return respObj;
     }
 
     public String buildEnvelope(Map<String, SOAPObject> bodyElements) 
@@ -95,6 +121,46 @@ public abstract class SOAPBinding
     public String getMIMEType()
     {
         return "text/xml";
+    }
+
+    public String getNSPrefix(String namespace)
+    {
+        //Note this only works if prefixes map to a single namespace...
+        for(Map.Entry<String, String> entry : getNamespaces().entrySet())
+        {
+            if(entry.getValue().equals(namespace))
+            {
+                return entry.getKey();
+            }
+        }
+
+        return null;
+    }
+
+    public String getNS(String prefix)
+    {
+        return getNamespaces().get(prefix);
+    }
+
+    public Object createObject(String uri, String localName)
+    {
+        Object rtrn = null;
+        String clsName = TYPES_PACKAGE + "." 
+            + getNSPrefix(uri) + "_" 
+            + localName;
+        try
+        {
+            rtrn = Class.forName(clsName).newInstance();
+        }
+        catch(Exception e)
+        {
+            if(isLogEnabled())
+            {
+                Log.e(logTag, "Could not create class '" + clsName + ".");
+            }
+        }
+
+        return rtrn;
     }
 
     private String sendXmlToServer(String envelope, String action) throws IOException
@@ -121,7 +187,7 @@ public abstract class SOAPBinding
         Header[] cookieHeaders = response.getHeaders("Set-Cookie");
         for(Header h : cookieHeaders)
         {
-            if(logTag != null)
+            if(isLogEnabled())
             {
                 //Get the name of the cookie.
                 String cookieName = h.getValue();
@@ -144,99 +210,65 @@ public abstract class SOAPBinding
 
         return total.toString();
     }
-
-    private class ResponseParser extends DefaultHandler
+    
+    public class ResponseParser
     {
-        private int indent = 0;
-        private StringBuilder prettyXML;
+        private Document doc;
 
-        public void setPrettify(boolean prettify)
+        public ResponseParser(String xml)
         {
-            if(prettify)
+            try
             {
-                prettyXML = new StringBuilder();
+               DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
+               dbFactory.setNamespaceAware(true);
+               DocumentBuilder builder = dbFactory.newDocumentBuilder();
+               doc = builder.parse(new ByteArrayInputStream(xml.getBytes()));
+            }
+            catch(Exception e)
+            {
+                throw new IllegalArgumentException("Bad XML response.", e);
             }
         }
 
-        public String getPrettyString()
+        public String getXmlAsPrettyString()
         {
-            if(prettyXML != null)
+            String rtrn = "";
+            try
+            {		
+                TransformerFactory tFactory = TransformerFactory.newInstance();
+                Transformer transformer = tFactory.newTransformer();
+
+                transformer.setOutputProperty(OutputKeys.INDENT, "yes");
+
+                StringWriter sw = new StringWriter();
+                StreamResult result = new StreamResult(sw);
+
+                DOMSource source = new DOMSource(doc);
+
+                transformer.transform(source, result);
+
+                rtrn = sw.toString();
+            }
+            catch(TransformerException te)
             {
-                return prettyXML.toString();
+                //
             }
 
-            return null;
+            return rtrn;
         }
 
-        public void startDocument()
+        public SOAPEnvelope parse()
         {
-            indent = 0;
-        }
-
-        private void appendIndentString()
-        {
-            if(prettyXML != null)
+            if(doc == null)
             {
-                for(int x = 0;x < indent;x++)
-                {
-                    prettyXML.append("    ");
-                }
+                //TODO throw an exception or something...
+                return null;
             }
-        }
 
-        public void startElement(String uri, String localName, String qName, 
-                Attributes attributes)
-        {
-            if(prettyXML != null)
-            {
-                appendIndentString();
-                prettyXML.append("<" + qName);
-                for(int x = 0;x < attributes.getLength();x++)
-                {
-                    String attQName = attributes.getQName(x);
-                    String name = attributes.getLocalName(x);
-                    if(!uri.equals(attributes.getURI(x)))
-                    {
-                        name = attQName;
-                    }
-
-                    prettyXML.append(" " + name + "=\"" +
-                            attributes.getValue(attQName) + "\"");
-                }
-                prettyXML.append(">\n");
-                indent++;
-            }
-        }
-
-        public void endElement(String uri, String localName, String qName)
-        {
-            if(prettyXML != null)
-            {
-                indent--;
-                appendIndentString();
-                prettyXML.append("</" + qName + ">\n");
-            }
-        }
-
-        public void characters(char[] ch, int start, int length)
-        {
-            if(prettyXML != null)
-            {
-                String str = new String(ch);
-                if(!str.trim().equals(""))
-                {
-                    prettyXML.append(str);
-                }
-            }
-        }
-
-        public void processingInstruction(String target, String data)
-        {
-            if(prettyXML != null)
-            {
-                appendIndentString();
-                prettyXML.append("<?" + target + " " + data + "?>\n");
-            }
+            Element root = doc.getDocumentElement();
+            SOAPEnvelope rtrn = new SOAPEnvelope();
+            rtrn.parse(SOAPBinding.this, root);
+            return rtrn;
         }
     }
 

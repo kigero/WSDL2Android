@@ -201,6 +201,7 @@ public class WSDL2Android
     {
         Map<String, Object> baseModel = new HashMap<String, Object>();
         baseModel.put("package", outputPackage);
+        baseModel.put("typePackage", outputTypesPackage);
 
         String[] baseTemplateNames = {"SOAPBinding", "SOAPEnvelope", "SOAPObject"};
         try
@@ -260,8 +261,22 @@ public class WSDL2Android
 
         Operation op = bOp.getOperation();
         Message inMsg = op.getInput().getMessage();
-
+        Message outMsg = op.getOutput().getMessage();
+        
         rtrn.put("name", op.getName());
+
+        Part[] oParts = (Part[]) outMsg.getParts().values().toArray(new Part[0]);
+        if(oParts.length > 0)
+        {
+            QName type = oParts[0].getElementName();
+            String typeName = buildTypeName(
+                        getPrefix(type.getNamespaceURI()), type.getLocalPart());
+            rtrn.put("return", typeName);
+        }
+        else
+        {
+            rtrn.put("return", "void");
+        }
 
         StringBuffer inputSB = new StringBuffer();
         List<Map<String, Object>> params = new ArrayList<Map<String, Object>>();
@@ -310,11 +325,11 @@ public class WSDL2Android
         rtrn.put("bindingName", binding.getQName().getLocalPart());
 
         List<Map<String, Object>> bOpNamespaces = new ArrayList<Map<String, Object>>();
-        for(String prefix : namespaceMap.keySet())
+        for(String ns : namespaceMap.keySet())
         {
             Map<String, Object> bOpNamespace = new HashMap<String, Object>();
-            bOpNamespace.put("prefix", prefix);
-            bOpNamespace.put("uri", namespaceMap.get(prefix));
+            bOpNamespace.put("prefix", namespaceMap.get(ns));
+            bOpNamespace.put("uri", ns);
             bOpNamespaces.add(bOpNamespace);
         }
         rtrn.put("namespaces", bOpNamespaces);
