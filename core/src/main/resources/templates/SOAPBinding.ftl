@@ -32,6 +32,7 @@ import javax.xml.transform.OutputKeys;
 import org.w3c.dom.Document;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
+import org.w3c.dom.NamedNodeMap;
 import org.w3c.dom.Element;
 import org.w3c.dom.TypeInfo;
 import java.io.ByteArrayInputStream;
@@ -96,7 +97,11 @@ public abstract class SOAPBinding
         ResponseParser respParser = new ResponseParser(response);
         if(isLogEnabled())
         {
-            Log.d(logTag, "Response: \n" + respParser.getXmlAsPrettyString());
+            Log.d(logTag, "Response:");
+            for(String s : respParser.getXmlAsPrettyString())
+            {
+                Log.d(logTag, s);
+            }
         }
 
         SOAPEnvelope respObj = respParser.parse();
@@ -230,31 +235,78 @@ public abstract class SOAPBinding
             }
         }
 
-        public String getXmlAsPrettyString()
+        private String[] getXmlAsPrettyString(Node node, int indent)
         {
-            String rtrn = "";
-            try
-            {		
-                TransformerFactory tFactory = TransformerFactory.newInstance();
-                Transformer transformer = tFactory.newTransformer();
+            StringWriter sw = new StringWriter();
 
-                transformer.setOutputProperty(OutputKeys.INDENT, "yes");
-
-                StringWriter sw = new StringWriter();
-                StreamResult result = new StreamResult(sw);
-
-                DOMSource source = new DOMSource(doc);
-
-                transformer.transform(source, result);
-
-                rtrn = sw.toString();
-            }
-            catch(TransformerException te)
+            for(int x = 0;x < indent;x++)
             {
-                //
+                sw.append("    ");
+            }
+            String indentStr = sw.toString();
+
+            sw = new StringWriter();
+
+            if(node.getNodeType() == Node.TEXT_NODE)
+            {
+                String str = node.getTextContent();
+                if(!str.trim().equals(""))
+                {
+                    sw.append(indentStr);
+                    sw.append(str);
+                    sw.append("\n");
+                }
+            }
+            else if(node.getNodeType() == Node.ELEMENT_NODE)
+            {
+                sw.append(indentStr);
+                sw.append("<");
+                sw.append(node.getNodeName());
+                if(node.hasAttributes())
+                {
+                    NamedNodeMap atts = node.getAttributes();
+                    for(int x = 0;x < atts.getLength();x++)
+                    {
+                        Node att = atts.item(x);
+                        sw.append(" ");
+                        sw.append(att.getNodeName());
+                        sw.append("=\"");
+                        sw.append(att.getNodeValue());
+                        sw.append("\"");
+                    }
+                }
+
+                if(node.hasChildNodes())
+                {
+                    sw.append(">\n");
+                    NodeList children = node.getChildNodes();
+                    for(int x = 0;x < children.getLength();x++)
+                    {
+                        for(String s : getXmlAsPrettyString(children.item(x), indent + 1))
+                        {
+                            sw.append(s + "\n");
+                        }
+                    }
+
+                    sw.append(indentStr);
+                    sw.append("</");
+                    sw.append(node.getNodeName());
+                    sw.append(">");
+                }
+                else
+                {
+                    sw.append(" />");
+                }
+
+                sw.append("\n");
             }
 
-            return rtrn;
+            return sw.toString().split("\n");
+        }
+
+        public String[] getXmlAsPrettyString()
+        {
+            return getXmlAsPrettyString(doc.getDocumentElement(), 0);
         }
 
         public SOAPEnvelope parse()
