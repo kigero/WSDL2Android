@@ -92,11 +92,10 @@ public class SOAPObject
         {
             ((SOAPObject) rtrn).parse(binding, el);
         }
-        else if(rtrn instanceof String)
+        else
         {
-            rtrn = el.getTextContent();
+            rtrn = parsePrimitive(rtrn, el.getTextContent());
         }
-        //...etc...
         
         return rtrn;
     }
@@ -143,13 +142,40 @@ public class SOAPObject
             return rtrn;
         }
 
-        if(rtrn instanceof String)
+        return parsePrimitive(rtrn, attValue);
+    }
+    
+    private static Object parsePrimitive(Object o, String value)
+    {
+        Object rtrn = null;
+
+        if(o instanceof String)
         {
-            rtrn = attValue;
+            rtrn = value;
         }
+        else if(o instanceof Double)
+        {
+            rtrn = new Double(value);
+        }
+        else if(o instanceof Integer)
+        {
+            rtrn = new Integer(value);
+        }
+        else if(o instanceof Long)
+        {
+            rtrn = new Long(value);
+        }
+        else if(o instanceof Short)
+        {
+            rtrn = new Short(value);
+        }
+        else if(o instanceof Float)
+        {
+            rtrn = new Float(value);
+        }
+        //Byte, Calendar, Byte[], BigDecimal, QName, URI
         //...etc...
         
         return rtrn;
-
     }
 }
